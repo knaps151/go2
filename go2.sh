@@ -81,17 +81,33 @@ find_server() {
     return 1
 }
 
+# Function to validate input doesn't contain pipe character
+validate_no_pipe() {
+    local input="$1"
+    local field_name="$2"
+    if [[ "$input" == *"|"* ]]; then
+        echo -e "${RED}Error:${NC} ${field_name} cannot contain the pipe character '|'. Please try again."
+        return 1
+    fi
+    return 0
+}
+
 # Function to add a new server interactively
 add_server() {
     echo -e "${BLUE}=== Add New Server ===${NC}"
     echo ""
     
     # Get server name
-    read -p "Server name (alias): " server_name
-    if [ -z "$server_name" ]; then
-        echo -e "${RED}Error:${NC} Server name cannot be empty."
-        exit 1
-    fi
+    while true; do
+        read -p "Server name (alias): " server_name
+        if [ -z "$server_name" ]; then
+            echo -e "${RED}Error:${NC} Server name cannot be empty."
+            continue
+        fi
+        if validate_no_pipe "$server_name" "Server name"; then
+            break
+        fi
+    done
     
     # Check if server already exists
     if find_server "$server_name" > /dev/null 2>&1; then
@@ -107,19 +123,34 @@ add_server() {
     fi
     
     # Get host
-    read -p "Hostname or IP: " host
-    if [ -z "$host" ]; then
-        echo -e "${RED}Error:${NC} Host cannot be empty."
-        exit 1
-    fi
+    while true; do
+        read -p "Hostname or IP: " host
+        if [ -z "$host" ]; then
+            echo -e "${RED}Error:${NC} Host cannot be empty."
+            continue
+        fi
+        if validate_no_pipe "$host" "Hostname"; then
+            break
+        fi
+    done
     
     # Get username
-    read -p "Username [$(whoami)]: " user
-    user="${user:-$(whoami)}"
+    while true; do
+        read -p "Username [$(whoami)]: " user
+        user="${user:-$(whoami)}"
+        if validate_no_pipe "$user" "Username"; then
+            break
+        fi
+    done
     
     # Get port
-    read -p "Port [22]: " port
-    port="${port:-22}"
+    while true; do
+        read -p "Port [22]: " port
+        port="${port:-22}"
+        if validate_no_pipe "$port" "Port"; then
+            break
+        fi
+    done
     
     # Get authentication method
     echo ""
@@ -135,12 +166,22 @@ add_server() {
     
     case $auth_choice in
         1)
-            read -p "SSH key file path [~/.ssh/id_rsa]: " key_file
-            key_file="${key_file:-~/.ssh/id_rsa}"
+            while true; do
+                read -p "SSH key file path [~/.ssh/id_rsa]: " key_file
+                key_file="${key_file:-~/.ssh/id_rsa}"
+                if validate_no_pipe "$key_file" "SSH key file path"; then
+                    break
+                fi
+            done
             ;;
         2)
-            read -sp "Password: " password
-            echo ""
+            while true; do
+                read -sp "Password: " password
+                echo ""
+                if validate_no_pipe "$password" "Password"; then
+                    break
+                fi
+            done
             if [ -z "$password" ]; then
                 echo -e "${YELLOW}Warning:${NC} Empty password. You'll be prompted during connection."
             else
@@ -158,8 +199,13 @@ add_server() {
     
     # Get additional options
     echo ""
-    read -p "Additional SSH options (optional, e.g., -o ServerAliveInterval=60): " options
-    options="${options:-}"
+    while true; do
+        read -p "Additional SSH options (optional, e.g., -o ServerAliveInterval=60): " options
+        options="${options:-}"
+        if validate_no_pipe "$options" "SSH options"; then
+            break
+        fi
+    done
     
     # Write to config file
     echo "${server_name}|${host}|${user}|${port}|${key_file}|${password}|${options}" >> "$CONFIG_FILE"
@@ -181,19 +227,39 @@ check_expect() {
 
 # Function to create and execute expect script for password authentication
 ssh_with_password() {
-    local ssh_cmd="$1"
-    local password="$2"
+    local ssh_args=("${@:1:$#-1}")  # All arguments except the last
+    local password="${!#}"           # Last argument is the password
     local expect_script=$(mktemp)
+    local ssh_args_file=$(mktemp)
+    
+    # Set up trap to ensure temp files are cleaned up even on interrupt
+    trap 'rm -f "$expect_script" "$ssh_args_file"' EXIT INT TERM
     
     # Escape the password for expect
     local escaped_password=$(echo "$password" | sed 's/[[\$*+?.^|(){}]/\\&/g')
+    
+    # Build the SSH command arguments list for expect
+    # We'll write each argument on a separate line and read them into a Tcl list
+    printf '%s\n' "${ssh_args[@]}" > "$ssh_args_file"
+    
+    # Escape the file path for use in expect script
+    local escaped_args_file=$(echo "$ssh_args_file" | sed 's/[[\$*+?.^|(){}]/\\&/g')
     
     cat > "$expect_script" << EOF
 #!/usr/bin/expect -f
 set timeout 30
 set password "$escaped_password"
 
-spawn $ssh_cmd
+# Read SSH arguments from file and build command
+set ssh_args {}
+set f [open "$escaped_args_file" r]
+while {[gets \$f line] >= 0} {
+    lappend ssh_args \$line
+}
+close \$f
+file delete "$escaped_args_file"
+
+spawn {*}\$ssh_args
 
 expect {
     -re "(?i)(password|Password):" {
@@ -224,7 +290,10 @@ EOF
     chmod +x "$expect_script"
     expect -f "$expect_script"
     local exit_code=$?
-    rm -f "$expect_script"
+    
+    # Clean up trap and temp files
+    trap - EXIT INT TERM
+    rm -f "$expect_script" "$ssh_args_file"
     return $exit_code
 }
 
@@ -262,28 +331,24 @@ if ! find_server "$SERVER_NAME"; then
     exit 1
 fi
 
-# Build SSH command
-SSH_CMD=""
+# Build SSH command using Bash array (secure, no eval)
+SSH_ARGS=("ssh")
 
 # Handle password authentication
 USE_PASSWORD_AUTH=false
 if [ -n "$SERVER_PASSWORD" ]; then
     if check_expect; then
         USE_PASSWORD_AUTH=true
-        SSH_CMD="ssh"
     else
         echo -e "${YELLOW}Warning:${NC} Password specified but 'expect' not found."
         echo -e "${YELLOW}Falling back to interactive password prompt...${NC}"
         echo ""
-        SSH_CMD="ssh"
     fi
-else
-    SSH_CMD="ssh"
 fi
 
 # Add port if specified
 if [ -n "$SERVER_PORT" ] && [ "$SERVER_PORT" != "22" ]; then
-    SSH_CMD="$SSH_CMD -p $SERVER_PORT"
+    SSH_ARGS+=("-p" "$SERVER_PORT")
 fi
 
 # Add key file if specified (and not using password)
@@ -291,19 +356,24 @@ if [ -n "$SERVER_KEY" ] && [ -z "$SERVER_PASSWORD" ]; then
     # Expand ~ to home directory
     SERVER_KEY="${SERVER_KEY/#\~/$HOME}"
     if [ -f "$SERVER_KEY" ]; then
-        SSH_CMD="$SSH_CMD -i $SERVER_KEY"
+        SSH_ARGS+=("-i" "$SERVER_KEY")
     else
         echo -e "${YELLOW}Warning:${NC} Key file '$SERVER_KEY' not found. Continuing without it."
     fi
 fi
 
 # Add additional options if specified
+# Parse SERVER_OPTIONS - it may contain multiple space-separated options
+# Since we've validated no pipes exist, we can safely split by spaces
 if [ -n "$SERVER_OPTIONS" ]; then
-    SSH_CMD="$SSH_CMD $SERVER_OPTIONS"
+    # Split SERVER_OPTIONS by spaces into array elements
+    # This is safe because we've validated the input doesn't contain pipes
+    IFS=' ' read -ra OPTIONS_ARRAY <<< "$SERVER_OPTIONS"
+    SSH_ARGS+=("${OPTIONS_ARRAY[@]}")
 fi
 
 # Add user and host
-SSH_CMD="$SSH_CMD ${SERVER_USER}@${SERVER_HOST}"
+SSH_ARGS+=("${SERVER_USER}@${SERVER_HOST}")
 
 # Display connection info
 auth_info=""
@@ -318,8 +388,8 @@ echo ""
 
 # Execute SSH connection
 if [ "$USE_PASSWORD_AUTH" = true ]; then
-    ssh_with_password "$SSH_CMD" "$SERVER_PASSWORD"
+    ssh_with_password "${SSH_ARGS[@]}" "$SERVER_PASSWORD"
 else
-    eval "$SSH_CMD"
+    "${SSH_ARGS[@]}"
 fi
 
