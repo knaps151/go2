@@ -1,0 +1,27 @@
+# SSH Server Configuration File
+# Format: name|host|user|port|key_file|password|additional_options
+# 
+# Fields:
+#   name: Short name to use with go2 command
+#   host: Server hostname or IP address
+#   user: SSH username
+#   port: SSH port (default: 22, can be omitted)
+#   key_file: Path to SSH private key (optional, can be omitted)
+#   password: SSH password (optional, can be omitted - WARNING: stored in plain text!)
+#   additional_options: Extra SSH options (optional, can be omitted)
+#
+# Security Note: Storing passwords in plain text is a security risk.
+#                Consider using SSH keys instead. If you must use passwords,
+#                ensure this file has restricted permissions: chmod 600 servers.conf
+#
+# Examples:
+#   web1|192.168.1.100|admin|22|~/.ssh/id_rsa||
+#   db-server|db.example.com|root|2222|~/.ssh/db_key||-o ServerAliveInterval=60
+#   prod|prod.example.com|deploy|22||mypassword|-o StrictHostKeyChecking=no
+#   staging|staging.example.com|user|22|||  (uses default SSH keys)
+
+# Copy this file to servers.conf and add your servers:
+#   cp servers.conf.example servers.conf
+#   chmod 600 servers.conf
+#   go2 add  (or edit manually)
+

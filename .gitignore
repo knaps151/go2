@@ -1,0 +1,13 @@
+# Config file with sensitive information
+servers.conf
+
+# Backup files
+*.bak
+*~
+
+# macOS
+.DS_Store
+
+# Temporary expect scripts (if any leak through)
+/tmp/go2_expect_*
+
