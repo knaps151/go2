@@ -1,207 +1,249 @@
-# SSH Management System - go2
+# go2 - SSH Connection Manager
 
-A simple SSH connection management system that allows you to quickly connect to your servers using short aliases.
+> **Quickly connect to your servers with simple aliases. No more remembering IP addresses, usernames, or typing long SSH commands.**
 
-## Features
+`go2` is a lightweight, cross-platform SSH management system that lets you connect to your servers using memorable aliases. Just type `go2 server-name` and you're connected. Perfect for developers, sysadmins, and anyone who manages multiple servers.
 
-- Quick SSH connections using server aliases
-- Support for custom ports, SSH keys, password authentication, and additional options
-- Interactive server addition via `go2 add` command
-- Easy-to-edit configuration file
-- Color-coded terminal output
-- Server listing with `go2 list` or `go2`
-- One-command installation script
+[![Platform Support](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-blue)]()
+[![License](https://img.shields.io/badge/license-MIT-green)]()
 
-## Platform Support
+---
 
-✅ **Fully Supported:**
-- **macOS** (tested and optimized)
-- **Linux** (Ubuntu, Debian, CentOS, Fedora, etc.)
-- **Windows** (via WSL - Windows Subsystem for Linux)
+## ✨ Features
 
-⚠️ **Partial Support:**
-- **Windows** (Git Bash or Cygwin - may require manual setup)
+- 🚀 **Lightning Fast** - Connect to servers instantly with short aliases
+- 🔐 **Multiple Auth Methods** - Support for SSH keys, passwords, and custom ports
+- 🎨 **Beautiful Terminal UI** - Color-coded output for better readability
+- ➕ **Interactive Setup** - Add servers easily with `go2 add` command
+- 📝 **Simple Configuration** - Plain text config file, easy to edit and version control
+- 🔒 **Secure by Default** - Proper file permissions and password protection
+- 🌍 **Cross-Platform** - Works on macOS, Linux, and Windows (WSL)
+- ⚡ **Zero Dependencies** - Uses standard Unix tools (bash, ssh, expect)
 
-## Requirements
+---
 
-- **Bash** (usually pre-installed on macOS and Linux, available on Windows via WSL/Git Bash)
-- **SSH client** (usually pre-installed on macOS and Linux, available on Windows)
-- **`expect`** (for password authentication - usually pre-installed on macOS and Linux)
-  - Install on Linux: `apt-get install expect` or `yum install expect`
-  - Install on macOS: Usually pre-installed, or `brew install expect`
-  - Install on Windows (WSL): `apt-get install expect`
-- **Git** (for cloning from GitHub)
+## 🎯 Quick Start
 
-## Quick Installation
-
-### From GitHub:
+### Installation
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/connect.git
-cd connect
+git clone https://github.com/knaps151/go2.git
+cd go2
 
 # Run the installation script
 ./install.sh
 
-# Reload your shell configuration
-source ~/.zshrc  # or ~/.bashrc for bash users
+# Reload your shell
+source ~/.zshrc  # macOS/Linux with zsh
+# or
+source ~/.bashrc  # Linux/WSL with bash
 ```
 
-That's it! The installation script will:
-- Make the go2 script executable
-- Detect your shell (zsh/bash) and add the `go2` alias automatically
-- Create `servers.conf` from example if it doesn't exist
-- Set proper permissions on the config file
-- Check for required dependencies (`expect` for password auth)
+**That's it!** The installer will:
+- ✅ Make scripts executable
+- ✅ Add the `go2` alias to your shell
+- ✅ Set up secure file permissions
+- ✅ Check for dependencies
 
-### Windows Users (WSL):
-
-If you're using Windows Subsystem for Linux (WSL), the installation works the same:
+### Your First Server
 
 ```bash
-# In your WSL terminal
-git clone https://github.com/yourusername/connect.git
-cd connect
-./install.sh
-source ~/.bashrc  # WSL typically uses bash
-```
-
-### Windows Users (Git Bash):
-
-Git Bash should work, but you may need to manually add the alias if the install script doesn't detect your shell correctly.
-
-## Manual Setup
-
-If you prefer to set up manually:
-
-### 1. Make the script executable
-
-```bash
-chmod +x go2.sh
-```
-
-### 2. Create an alias
-
-Add the following line to your shell configuration file:
-
-**For Zsh (default on macOS):**
-```bash
-echo 'alias go2="bash /path/to/connect/go2.sh"' >> ~/.zshrc
-source ~/.zshrc
-```
-
-**For Bash:**
-```bash
-echo 'alias go2="bash /path/to/connect/go2.sh"' >> ~/.bashrc
-source ~/.bashrc
-```
-
-**Note:** Replace `/path/to/connect` with the actual path where you cloned/downloaded the repository.
-
-### 3. Configure your servers
-
-You can add servers in two ways:
-
-#### Option A: Interactive addition (Recommended)
-```bash
+# Add a server interactively
 go2 add
-```
 
-This will guide you through adding a server interactively.
+# Connect to it
+go2 my-server
 
-#### Option B: Manual configuration
-
-Edit the `servers.conf` file and add your server configurations:
-
-```
-server-name|hostname|username|port|key-file|password|options
-```
-
-**Example configurations:**
-
-```
-# Simple connection with SSH key
-web1|192.168.1.100|admin|22|~/.ssh/id_rsa||
-
-# Custom port
-db-server|db.example.com|root|2222|~/.ssh/db_key||
-
-# With password authentication (WARNING: stored in plain text!)
-prod|prod.example.com|deploy|22||mypassword|
-
-# With additional SSH options
-staging|staging.example.com|deploy|22|~/.ssh/prod_key||-o ServerAliveInterval=60
-
-# Without key file (uses default SSH keys)
-test|test.example.com|user|22|||
-```
-
-**Configuration format:**
-- `name`: Short name to use with `go2` command
-- `host`: Server hostname or IP address
-- `user`: SSH username
-- `port`: SSH port (default: 22, can be omitted)
-- `key_file`: Path to SSH private key (optional, can be omitted)
-- `password`: SSH password (optional, can be omitted - **WARNING: stored in plain text!**)
-- `options`: Extra SSH options (optional, can be omitted)
-
-**Security Note:** Storing passwords in plain text is a security risk. Consider using SSH keys instead. If you must use passwords, ensure the config file has restricted permissions:
-```bash
-chmod 600 servers.conf
-```
-
-## Usage
-
-### Connect to a server:
-```bash
-go2 server-name
-```
-
-### Add a new server interactively:
-```bash
-go2 add
-```
-
-### List available servers:
-```bash
+# List all servers
 go2 list
-# or simply
-go2
 ```
 
-## Examples
+---
+
+## 📋 Requirements
+
+| Requirement | macOS | Linux | Windows (WSL) |
+|------------|-------|-------|---------------|
+| **Bash** | ✅ Pre-installed | ✅ Pre-installed | ✅ Pre-installed |
+| **SSH** | ✅ Pre-installed | ✅ Pre-installed | ✅ Available |
+| **expect** | ✅ Usually pre-installed | ✅ Usually pre-installed | ⚠️ May need install |
+
+**Installing `expect` (if needed):**
+- **macOS**: `brew install expect`
+- **Linux (Debian/Ubuntu)**: `sudo apt-get install expect`
+- **Linux (RHEL/CentOS)**: `sudo yum install expect`
+- **Windows (WSL)**: `sudo apt-get install expect`
+
+---
+
+## 🚀 Usage
+
+### Basic Commands
 
 ```bash
-# Connect to web1 server
-go2 web1
+# Connect to a server
+go2 server-name
 
-# Connect to database server
-go2 db-server
-
-# Add a new server interactively
+# Add a new server (interactive)
 go2 add
 
 # List all configured servers
 go2 list
+# or simply
+go2
+
+# Show help
+go2 help
 ```
 
-## Password Authentication
-
-If you configure a server with a password, the script uses `expect` (usually pre-installed on macOS and Linux) for automatic password entry. If `expect` is not available, it will fall back to an interactive password prompt.
-
-**Note:** `expect` is typically pre-installed on macOS and most Linux distributions. If you need to install it:
-- **macOS**: Usually pre-installed, or `brew install expect`
-- **Linux (Debian/Ubuntu)**: `sudo apt-get install expect`
-- **Linux (RHEL/CentOS/Fedora)**: `sudo yum install expect` or `sudo dnf install expect`
-- **Windows (WSL)**: `sudo apt-get install expect`
-
-## Uninstallation
-
-To remove go2 from your system:
+### Real-World Examples
 
 ```bash
-cd /path/to/connect
+# Connect to your web server
+go2 web1
+
+# Connect to database server on custom port
+go2 db-prod
+
+# Add a new staging server
+go2 add
+# Follow the prompts...
+
+# See all your servers at a glance
+go2 list
+```
+
+---
+
+## ⚙️ Configuration
+
+### Adding Servers
+
+#### Method 1: Interactive (Recommended)
+
+```bash
+go2 add
+```
+
+The interactive wizard will guide you through:
+- Server name (alias)
+- Hostname or IP address
+- Username
+- Port (defaults to 22)
+- Authentication method (SSH key, password, or default)
+- Additional SSH options
+
+#### Method 2: Manual Configuration
+
+Edit `servers.conf` directly:
+
+```bash
+# Format: name|host|user|port|key_file|password|options
+web1|192.168.1.100|admin|22|~/.ssh/id_rsa||
+db-server|db.example.com|root|2222|~/.ssh/db_key||
+prod|prod.example.com|deploy|22||mypassword|
+```
+
+**Configuration Fields:**
+- `name` - Short alias to use with `go2` command
+- `host` - Server hostname or IP address
+- `user` - SSH username
+- `port` - SSH port (default: 22, optional)
+- `key_file` - Path to SSH private key (optional)
+- `password` - SSH password (optional, **stored in plain text**)
+- `options` - Additional SSH options (optional)
+
+**Example Configurations:**
+
+```bash
+# SSH key authentication
+web1|192.168.1.100|admin|22|~/.ssh/id_rsa||
+
+# Custom port with SSH key
+db-server|db.example.com|root|2222|~/.ssh/db_key||
+
+# Password authentication (not recommended)
+prod|prod.example.com|deploy|22||mypassword|
+
+# With custom SSH options
+staging|staging.example.com|deploy|22|~/.ssh/key||-o ServerAliveInterval=60
+
+# Default SSH keys
+test|test.example.com|user|22|||
+```
+
+---
+
+## 🔐 Security
+
+### Best Practices
+
+1. **Use SSH Keys** - Prefer SSH key authentication over passwords
+2. **Restrict Permissions** - The installer sets `chmod 600` on `servers.conf` automatically
+3. **Version Control** - The `servers.conf` file is excluded from git (via `.gitignore`)
+4. **Password Storage** - If you must use passwords, they're stored in plain text. Consider using SSH keys instead.
+
+### File Permissions
+
+The installer automatically sets secure permissions:
+```bash
+chmod 600 servers.conf  # Read/write for owner only
+chmod +x go2.sh          # Executable
+```
+
+---
+
+## 🌍 Platform Support
+
+| Platform | Status | Notes |
+|----------|--------|-------|
+| **macOS** | ✅ Fully Supported | Tested and optimized |
+| **Linux** | ✅ Fully Supported | Works on all major distributions |
+| **Windows (WSL)** | ✅ Fully Supported | Same as Linux |
+| **Windows (Git Bash)** | ⚠️ Partial | May require manual alias setup |
+
+---
+
+## 🔧 Advanced Usage
+
+### Password Authentication
+
+When using password authentication, `go2` uses `expect` for automatic password entry. If `expect` isn't available, it falls back to an interactive prompt.
+
+**Automatic Password Entry:**
+- Requires `expect` (usually pre-installed)
+- Passwords are entered automatically
+- No manual typing required
+
+**Interactive Fallback:**
+- If `expect` isn't available
+- You'll be prompted to enter the password manually
+- Still works, just requires manual input
+
+### Custom SSH Options
+
+You can add any SSH options to your server configuration:
+
+```bash
+# Keep connection alive
+-o ServerAliveInterval=60
+
+# Skip host key checking (for testing)
+-o StrictHostKeyChecking=no
+
+# Custom timeout
+-o ConnectTimeout=10
+```
+
+---
+
+## 🗑️ Uninstallation
+
+To remove `go2` from your system:
+
+```bash
+cd /path/to/go2
 ./uninstall.sh
 ```
 
@@ -209,15 +251,46 @@ This will:
 - Remove the `go2` alias from your shell configuration
 - Create a backup of your shell config file
 
-You can then manually delete the go2 directory if desired.
+You can then delete the `go2` directory if desired:
+```bash
+rm -rf /path/to/go2
+```
 
-## Notes
+---
 
-- The script will automatically expand `~` in key file paths to your home directory
-- If a key file is specified but not found, the script will continue without it (using default SSH keys)
-- Empty fields in the config file should be left empty (use `||` for empty fields)
-- Lines starting with `#` are treated as comments
-- When using password authentication, passwords are stored in plain text. Use SSH keys for better security
-- The script will prompt to overwrite if you try to add a server that already exists
-- The `servers.conf` file is excluded from git (via `.gitignore`) to protect your credentials
+## 📝 Notes & Tips
 
+- **Path Expansion**: The script automatically expands `~` in key file paths to your home directory
+- **Missing Keys**: If a key file is specified but not found, the script falls back to default SSH keys
+- **Empty Fields**: Leave empty fields empty (use `||` for empty fields in config)
+- **Comments**: Lines starting with `#` are treated as comments
+- **Duplicate Servers**: The script will prompt to overwrite if you try to add a server that already exists
+- **Config Location**: The config file is stored in the same directory as `go2.sh`
+
+---
+
+## 🤝 Contributing
+
+Contributions are welcome! Feel free to:
+- Report bugs
+- Suggest new features
+- Submit pull requests
+- Improve documentation
+
+---
+
+## 📄 License
+
+This project is open source and available under the [MIT License](LICENSE).
+
+---
+
+## 🙏 Acknowledgments
+
+Built with ❤️ for developers and sysadmins who value simplicity and efficiency.
+
+**Made with:** Bash, SSH, and a lot of terminal love.
+
+---
+
+**Questions? Issues?** [Open an issue](https://github.com/knaps151/go2/issues) on GitHub!
