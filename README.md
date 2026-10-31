@@ -16,9 +16,9 @@
 - 🎨 **Beautiful Terminal UI** - Color-coded output for better readability
 - ➕ **Interactive Setup** - Add servers easily with `go2 add` command
 - 📝 **Simple Configuration** - Plain text config file, easy to edit and version control
-- 🔒 **Secure by Default** - Proper file permissions and password protection
+- 🔒 **Secure by Default** - Proper file permissions (600) and no auto-accepting of unknown host keys
 - 🌍 **Cross-Platform** - Works on macOS, Linux, and Windows (WSL)
-- ⚡ **Zero Dependencies** - Uses standard Unix tools (bash, ssh, expect)
+- ⚡ **Minimal Dependencies** - Uses standard Unix tools (bash, ssh), with optional `expect` for password auth
 
 ---
 
@@ -37,14 +37,16 @@ cd go2
 # Reload your shell
 source ~/.zshrc  # macOS/Linux with zsh
 # or
+source ~/.bash_profile  # macOS with bash
+# or
 source ~/.bashrc  # Linux/WSL with bash
 ```
 
 **That's it!** The installer will:
 - ✅ Make scripts executable
 - ✅ Add the `go2` alias to your shell
-- ✅ Set up secure file permissions
-- ✅ Check for dependencies
+- ✅ Set up secure file permissions (600 for config)
+- ✅ Check for optional dependencies
 
 ### Your First Server
 
@@ -67,9 +69,11 @@ go2 list
 |------------|-------|-------|---------------|
 | **Bash** | ✅ Pre-installed | ✅ Pre-installed | ✅ Pre-installed |
 | **SSH** | ✅ Pre-installed | ✅ Pre-installed | ✅ Available |
-| **expect** | ✅ Usually pre-installed | ✅ Usually pre-installed | ⚠️ May need install |
+| **expect** (optional) | ⚠️ May need install | ⚠️ May need install | ⚠️ May need install |
 
-**Installing `expect` (if needed):**
+**Note:** `expect` is only required for automatic password entry. Without it, password authentication falls back to the standard interactive SSH prompt.
+
+**Installing `expect`:**
 - **macOS**: `brew install expect`
 - **Linux (Debian/Ubuntu)**: `sudo apt-get install expect`
 - **Linux (RHEL/CentOS)**: `sudo yum install expect`
@@ -146,10 +150,10 @@ prod|prod.example.com|deploy|22||mypassword|
 ```
 
 **Configuration Fields:**
-- `name` - Short alias to use with `go2` command
+- `name` - Short alias to use with `go2` command (letters, numbers, dots, dashes, underscores only)
 - `host` - Server hostname or IP address
 - `user` - SSH username
-- `port` - SSH port (default: 22, optional)
+- `port` - SSH port (default: 22, must be a valid number 1-65535)
 - `key_file` - Path to SSH private key (optional)
 - `password` - SSH password (optional, **stored in plain text**)
 - `options` - Additional SSH options (optional)
@@ -163,7 +167,7 @@ web1|192.168.1.100|admin|22|~/.ssh/id_rsa||
 # Custom port with SSH key
 db-server|db.example.com|root|2222|~/.ssh/db_key||
 
-# Password authentication (not recommended)
+# Password authentication (not recommended for production)
 prod|prod.example.com|deploy|22||mypassword|
 
 # With custom SSH options
@@ -183,14 +187,17 @@ test|test.example.com|user|22|||
 2. **Restrict Permissions** - The installer sets `chmod 600` on `servers.conf` automatically
 3. **Version Control** - The `servers.conf` file is excluded from git (via `.gitignore`)
 4. **Password Storage** - If you must use passwords, they're stored in plain text. Consider using SSH keys instead.
+5. **Host Key Verification** - go2 does NOT auto-accept unknown host keys; you must verify them manually
 
 ### File Permissions
 
-The installer automatically sets secure permissions:
+The installer and go2 automatically set secure permissions:
 ```bash
 chmod 600 servers.conf  # Read/write for owner only
 chmod +x go2.sh          # Executable
 ```
+
+If the config file has insecure permissions, go2 will display a warning.
 
 ---
 
@@ -198,7 +205,7 @@ chmod +x go2.sh          # Executable
 
 | Platform | Status | Notes |
 |----------|--------|-------|
-| **macOS** | ✅ Fully Supported | Tested and optimized |
+| **macOS** | ✅ Fully Supported | Tested on Bash 3.2+ and Zsh |
 | **Linux** | ✅ Fully Supported | Works on all major distributions |
 | **Windows (WSL)** | ✅ Fully Supported | Same as Linux |
 | **Windows (Git Bash)** | ⚠️ Partial | May require manual alias setup |
@@ -212,8 +219,8 @@ chmod +x go2.sh          # Executable
 When using password authentication, `go2` uses `expect` for automatic password entry. If `expect` isn't available, it falls back to an interactive prompt.
 
 **Automatic Password Entry:**
-- Requires `expect` (usually pre-installed)
-- Passwords are entered automatically
+- Requires `expect` to be installed
+- Passwords are passed securely via environment variable
 - No manual typing required
 
 **Interactive Fallback:**
@@ -228,9 +235,6 @@ You can add any SSH options to your server configuration:
 ```bash
 # Keep connection alive
 -o ServerAliveInterval=60
-
-# Skip host key checking (for testing)
--o StrictHostKeyChecking=no
 
 # Custom timeout
 -o ConnectTimeout=10
@@ -266,6 +270,7 @@ rm -rf /path/to/go2
 - **Comments**: Lines starting with `#` are treated as comments
 - **Duplicate Servers**: The script will prompt to overwrite if you try to add a server that already exists
 - **Config Location**: The config file is stored in the same directory as `go2.sh`
+- **Line Endings**: The config file supports both Unix (LF) and Windows (CRLF) line endings
 
 ---
 

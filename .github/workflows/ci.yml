@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  shellcheck:
+    name: ShellCheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Run ShellCheck
+        uses: ludeeus/action-shellcheck@master
+        with:
+          scandir: '.'
+          severity: warning
+
+  test:
+    name: Tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install bats (Ubuntu)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y bats
+      
+      - name: Install bats (macOS)
+        if: runner.os == 'macOS'
+        run: brew install bats-core
+      
+      - name: Make scripts executable
+        run: chmod +x go2.sh install.sh uninstall.sh
+      
+      - name: Run tests
+        run: bats test/*.bats
+      
+      - name: Verify shellcheck passes
+        run: |
+          if command -v shellcheck &> /dev/null; then
+            shellcheck -s bash go2.sh install.sh uninstall.sh
+          else
+            echo "ShellCheck not available, skipping local check"
+          fi
+
+  bash-compatibility:
+    name: Bash 3.2 Compatibility Check
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Check Bash version
+        run: |
+          echo "Bash version:"
+          bash --version
+      
+      - name: Syntax check with bash 3.2
+        run: |
+          # macOS comes with Bash 3.2 - verify scripts parse correctly
+          bash -n go2.sh
+          bash -n install.sh
+          bash -n uninstall.sh
+          echo "All scripts parse correctly with Bash 3.2"
