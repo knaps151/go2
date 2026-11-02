@@ -1,6 +1,6 @@
 (() => {
   const typed = document.getElementById("typed");
-  const command = "go2 pi";
+  const command = "go2 web1";
   const lines = document.querySelectorAll(".t-line");
   const lateCursor = document.querySelector(".cursor--late");
 
