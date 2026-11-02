@@ -357,10 +357,9 @@ run_go2() {
 @test "auth info shows password when password set" {
     create_config "server1|host1|user1|22||secret|"
     
-    # Use timeout to avoid hanging if expect tries to run
-    run bash -c "timeout 3 bash '$TEST_DIR/go2.sh' server1 2>&1 || true"
-    # Expect warning about expect not found OR password auth message OR connection attempt
-    [[ "$output" == *"password"* ]] || [[ "$output" == *"expect"* ]] || [[ "$output" == *"Connecting"* ]]
+    run_go2 "server1"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"password auth"* ]]
 }
 
 @test "auth info shows key when key exists" {

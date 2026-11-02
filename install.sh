@@ -172,13 +172,8 @@ else
     printf '%b\n' "${GREEN}✓${NC} Alias added to ${SHELL_RC}"
 fi
 
-# Check if expect is available (for password authentication)
-if command -v expect > /dev/null 2>&1; then
-    printf '%b\n' "${GREEN}✓${NC} 'expect' is installed (password authentication supported)"
-else
-    printf '%b\n' "${YELLOW}⚠${NC} 'expect' not found. Password authentication will use interactive prompts."
-    printf '%b\n' "${YELLOW}   Install with: brew install expect (macOS) or apt install expect (Linux)${NC}"
-fi
+# Password auth uses OpenSSH SSH_ASKPASS (no expect dependency)
+printf '%b\n' "${GREEN}✓${NC} Password authentication uses OpenSSH SSH_ASKPASS (arrow keys / full TTY work)"
 
 printf '\n'
 printf '%b\n' "${GREEN}=== Installation Complete! ===${NC}"

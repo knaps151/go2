@@ -18,7 +18,7 @@
 - 📝 **Simple Configuration** - Plain text config file, easy to edit and version control
 - 🔒 **Secure by Default** - Proper file permissions (600) and no auto-accepting of unknown host keys
 - 🌍 **Cross-Platform** - Works on macOS, Linux, and Windows (WSL)
-- ⚡ **Minimal Dependencies** - Uses standard Unix tools (bash, ssh), with optional `expect` for password auth
+- ⚡ **Minimal Dependencies** - Uses standard Unix tools (bash, ssh); password auth via OpenSSH `SSH_ASKPASS`
 
 ---
 
@@ -68,16 +68,9 @@ go2 list
 | Requirement | macOS | Linux | Windows (WSL) |
 |------------|-------|-------|---------------|
 | **Bash** | ✅ Pre-installed | ✅ Pre-installed | ✅ Pre-installed |
-| **SSH** | ✅ Pre-installed | ✅ Pre-installed | ✅ Available |
-| **expect** (optional) | ⚠️ May need install | ⚠️ May need install | ⚠️ May need install |
+| **OpenSSH** (8.4+) | ✅ Pre-installed | ✅ Pre-installed | ✅ Available |
 
-**Note:** `expect` is only required for automatic password entry. Without it, password authentication falls back to the standard interactive SSH prompt.
-
-**Installing `expect`:**
-- **macOS**: `brew install expect`
-- **Linux (Debian/Ubuntu)**: `sudo apt-get install expect`
-- **Linux (RHEL/CentOS)**: `sudo yum install expect`
-- **Windows (WSL)**: `sudo apt-get install expect`
+**Note:** Automatic password entry uses OpenSSH `SSH_ASKPASS` (no `expect`), so the session keeps a normal TTY — arrow keys, Ctrl+C, and resize all work.
 
 ---
 
@@ -216,17 +209,7 @@ If the config file has insecure permissions, go2 will display a warning.
 
 ### Password Authentication
 
-When using password authentication, `go2` uses `expect` for automatic password entry. If `expect` isn't available, it falls back to an interactive prompt.
-
-**Automatic Password Entry:**
-- Requires `expect` to be installed
-- Passwords are passed securely via environment variable
-- No manual typing required
-
-**Interactive Fallback:**
-- If `expect` isn't available
-- You'll be prompted to enter the password manually
-- Still works, just requires manual input
+When a password is stored in `servers.conf`, `go2` feeds it to OpenSSH via `SSH_ASKPASS` so you get a normal interactive SSH session (working arrow keys / readline). Passwords are passed through a short-lived helper script and an environment variable — they are not embedded in process arguments.
 
 ### Custom SSH Options
 

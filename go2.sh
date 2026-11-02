@@ -409,120 +409,34 @@ add_server() {
     printf '%b\n' "Connect using: ${CYAN}go2 ${server_name}${NC}"
 }
 
-# Function to check if expect is available
-check_expect() {
-    command -v expect > /dev/null 2>&1
-}
-
-# Function to create and execute expect script for password authentication
+# Password auth via OpenSSH SSH_ASKPASS so ssh owns the TTY directly.
+# (expect's interact breaks arrow keys / readline: keys show up as ^[[A etc.)
 ssh_with_password() {
     local password="$1"
     shift
     local ssh_args=("$@")
-    
-    local expect_script
-    expect_script=$(mktemp)
-    
-    # Set up trap to ensure temp file is cleaned up even on interrupt
-    trap 'rm -f "$expect_script"' EXIT INT TERM
-    
-    # Pass password via environment variable instead of embedding in script
+
+    local askpass_script
+    askpass_script=$(mktemp)
+    trap 'rm -f "$askpass_script"; unset GO2_SSH_PASSWORD SSH_ASKPASS SSH_ASKPASS_REQUIRE' EXIT INT TERM
+
+    cat > "$askpass_script" << 'ASKPASS_EOF'
+#!/bin/sh
+printf '%s\n' "$GO2_SSH_PASSWORD"
+ASKPASS_EOF
+    chmod 700 "$askpass_script"
+
     export GO2_SSH_PASSWORD="$password"
-    
-    # Use quoted heredoc to prevent variable/command substitution in the script
-    # This prevents Tcl injection from the password
-    cat > "$expect_script" << 'EXPECT_SCRIPT_END'
-#!/usr/bin/expect -f
+    export SSH_ASKPASS="$askpass_script"
+    export SSH_ASKPASS_REQUIRE=force
 
-# Get password from environment variable (secure)
-set password $env(GO2_SSH_PASSWORD)
-
-# Get SSH args from command line
-set ssh_args [lrange $argv 0 end]
-
-# Spawn SSH
-spawn -noecho {*}$ssh_args
-
-set timeout 30
-
-# Wait for password prompt or host key verification
-expect {
-    "(yes/no)" {
-        puts stderr "\nHost key verification required. Please verify the fingerprint and type 'yes' or 'no'."
-        expect_user -re "(.*)\n"
-        send -- "$expect_out(1,string)\r"
-        exp_continue
-    }
-    "(yes/no/\[fingerprint\])" {
-        puts stderr "\nHost key verification required. Please verify the fingerprint."
-        expect_user -re "(.*)\n"
-        send -- "$expect_out(1,string)\r"
-        exp_continue
-    }
-    "Are you sure you want to continue connecting" {
-        puts stderr "\nHost key verification required. Please respond."
-        expect_user -re "(.*)\n"
-        send -- "$expect_out(1,string)\r"
-        exp_continue
-    }
-    -nocase -re "password.*:" {
-        send -- "$password\r"
-    }
-    "Permission denied" {
-        puts stderr "Authentication failed"
-        exit 1
-    }
-    timeout {
-        puts stderr "Connection timed out"
-        exit 1
-    }
-    eof {
-        puts stderr "Connection closed"
-        exit 1
-    }
-}
-
-# After sending password, check for auth failure or success
-set timeout 10
-expect {
-    -nocase -re "password.*:" {
-        # Prompted for password again = wrong password
-        puts stderr "Authentication failed - incorrect password"
-        exit 1
-    }
-    "Permission denied" {
-        puts stderr "Authentication failed"
-        exit 1
-    }
-    -re "(\\\$|#|>|\\]) ?$" {
-        # Common shell prompt patterns - we're logged in
-    }
-    -re "\n" {
-        # Got some output (MOTD, etc), keep consuming until we see a prompt
-        exp_continue
-    }
-    timeout {
-        # Timeout usually means we're at a prompt that didn't match
-    }
-    eof {
-        catch wait result
-        exit [lindex $result 3]
-    }
-}
-
-# Hand control to user - this is the key part for interactive use
-interact
-EXPECT_SCRIPT_END
-    
-    chmod +x "$expect_script"
-    expect -f "$expect_script" "${ssh_args[@]}"
+    "${ssh_args[@]}"
     local exit_code=$?
-    
-    # Clean up trap and temp file
+
+    unset GO2_SSH_PASSWORD SSH_ASKPASS SSH_ASKPASS_REQUIRE
+    rm -f "$askpass_script"
     trap - EXIT INT TERM
-    rm -f "$expect_script"
-    unset GO2_SSH_PASSWORD
-    
+
     return $exit_code
 }
 
@@ -569,13 +483,13 @@ SSH_ARGS=("ssh")
 # Handle password authentication
 USE_PASSWORD_AUTH=false
 if [ -n "$SERVER_PASSWORD" ]; then
-    if check_expect; then
-        USE_PASSWORD_AUTH=true
-    else
-        printf '%b\n' "${YELLOW}Warning:${NC} Password specified but 'expect' not found."
-        printf '%b\n' "${YELLOW}Falling back to interactive password prompt...${NC}"
-        printf '\n'
-    fi
+    USE_PASSWORD_AUTH=true
+fi
+
+# OpenSSH 10.1+ warns when the server lacks post-quantum KEX (common on
+# older Raspberry Pi OS / appliances). Silence only that warning when supported.
+if ssh -G -o WarnWeakCrypto=no-pq-kex localhost >/dev/null 2>&1; then
+    SSH_ARGS+=("-o" "WarnWeakCrypto=no-pq-kex")
 fi
 
 # Add port if specified
