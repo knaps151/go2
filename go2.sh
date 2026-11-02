@@ -3,8 +3,13 @@
 # SSH Management System - go2
 # Usage: go2 <server-name> | go2 add | go2 list
 
+set -o pipefail
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG_FILE="${SCRIPT_DIR}/servers.conf"
+
+# Reserved command names that cannot be used as server names
+RESERVED_NAMES=("add" "list" "help" "--help" "-h")
 
 # Colors for output
 RED='\033[0;31m'
@@ -16,44 +21,90 @@ NC='\033[0m' # No Color
 
 # Function to display usage
 usage() {
-    echo -e "${BLUE}Usage:${NC}"
-    echo -e "  go2 <server-name>    ${CYAN}Connect to a server${NC}"
-    echo -e "  go2 add              ${CYAN}Add a new server interactively${NC}"
-    echo -e "  go2 list             ${CYAN}List all configured servers${NC}"
-    echo ""
-    echo -e "${BLUE}Available servers:${NC}"
+    printf '%b\n' "${BLUE}Usage:${NC}"
+    printf '%b\n' "  go2 <server-name>    ${CYAN}Connect to a server${NC}"
+    printf '%b\n' "  go2 add              ${CYAN}Add a new server interactively${NC}"
+    printf '%b\n' "  go2 list             ${CYAN}List all configured servers${NC}"
+    printf '\n'
+    printf '%b\n' "${BLUE}Available servers:${NC}"
     list_servers
-    exit 1
+}
+
+# Function to warn if config file has insecure permissions
+check_config_permissions() {
+    if [ ! -f "$CONFIG_FILE" ]; then
+        return
+    fi
+    
+    local perms
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        perms=$(stat -f '%A' "$CONFIG_FILE" 2>/dev/null) || return
+    else
+        perms=$(stat -c '%a' "$CONFIG_FILE" 2>/dev/null) || return
+    fi
+    
+    # Check if group or world has any permissions (not 600 or stricter)
+    if [[ "$perms" != "600" && "$perms" != "400" ]]; then
+        printf '%b\n' "${YELLOW}Warning:${NC} Config file has insecure permissions ($perms). Run: chmod 600 \"$CONFIG_FILE\"" >&2
+    fi
+}
+
+# Function to append to config file securely
+append_config_secure() {
+    local line="$1"
+    local old_umask
+    old_umask=$(umask)
+    umask 077
+    printf '%s\n' "$line" >> "$CONFIG_FILE"
+    umask "$old_umask"
+}
+
+# Function to strip CR from line (handles CRLF line endings from Windows/WSL)
+strip_cr() {
+    printf '%s' "${1//$'\r'/}"
 }
 
 # Function to list available servers
 list_servers() {
     if [ ! -f "$CONFIG_FILE" ]; then
-        echo -e "${YELLOW}No servers configured. Use 'go2 add' to add servers.${NC}"
+        printf '%b\n' "${YELLOW}No servers configured. Use 'go2 add' to add servers.${NC}"
         return
     fi
     
-    echo ""
+    check_config_permissions
+    
+    printf '\n'
     local count=0
-    while IFS='|' read -r name host user port key_file password options; do
-        # Skip empty lines and comments
-        [[ -z "$name" || "$name" =~ ^#.*$ ]] && continue
+    local line
+    while IFS='|' read -r name host user port key_file password options || [[ -n "$name" ]]; do
+        # Strip CR from the last field (options) and other fields
+        name=$(strip_cr "$name")
+        host=$(strip_cr "$host")
+        user=$(strip_cr "$user")
+        port=$(strip_cr "$port")
+        key_file=$(strip_cr "$key_file")
+        password=$(strip_cr "$password")
+        options=$(strip_cr "$options")
+        
+        # Skip empty lines and comments (including indented comments)
+        [[ -z "$name" || "$name" =~ ^[[:space:]]*# ]] && continue
+        
         count=$((count + 1))
         local auth_method=""
-        if [ -n "$key_file" ]; then
-            auth_method=" (key: ${key_file})"
-        elif [ -n "$password" ]; then
+        if [ -n "$password" ]; then
             auth_method=" (password)"
+        elif [ -n "$key_file" ]; then
+            auth_method=" (key: ${key_file})"
         fi
         local port_info=""
         [ -n "$port" ] && [ "$port" != "22" ] && port_info=":${port}"
-        echo -e "  ${GREEN}${name}${NC} -> ${user}@${host}${port_info}${auth_method}"
+        printf '%b\n' "  ${GREEN}${name}${NC} -> ${user}@${host}${port_info}${auth_method}"
     done < "$CONFIG_FILE"
     
     if [ $count -eq 0 ]; then
-        echo -e "${YELLOW}No servers configured. Use 'go2 add' to add servers.${NC}"
+        printf '%b\n' "${YELLOW}No servers configured. Use 'go2 add' to add servers.${NC}"
     fi
-    echo ""
+    printf '\n'
 }
 
 # Function to find server configuration
@@ -63,11 +114,21 @@ find_server() {
         return 1
     fi
     
-    while IFS='|' read -r name host user port key_file password options; do
-        # Skip empty lines and comments
-        [[ -z "$name" || "$name" =~ ^#.*$ ]] && continue
+    local name host user port key_file password options
+    while IFS='|' read -r name host user port key_file password options || [[ -n "$name" ]]; do
+        # Strip CR from all fields
+        name=$(strip_cr "$name")
+        host=$(strip_cr "$host")
+        user=$(strip_cr "$user")
+        port=$(strip_cr "$port")
+        key_file=$(strip_cr "$key_file")
+        password=$(strip_cr "$password")
+        options=$(strip_cr "$options")
         
-        if [ "$name" == "$server_name" ]; then
+        # Skip empty lines and comments
+        [[ -z "$name" || "$name" =~ ^[[:space:]]*# ]] && continue
+        
+        if [ "$name" = "$server_name" ]; then
             SERVER_HOST="$host"
             SERVER_USER="$user"
             SERVER_PORT="${port:-22}"
@@ -81,12 +142,121 @@ find_server() {
     return 1
 }
 
+# Function to check if a server name exists in the config (exact match)
+server_exists() {
+    local server_name=$1
+    if [ ! -f "$CONFIG_FILE" ]; then
+        return 1
+    fi
+    
+    local name
+    while IFS='|' read -r name _ || [[ -n "$name" ]]; do
+        name=$(strip_cr "$name")
+        [[ -z "$name" || "$name" =~ ^[[:space:]]*# ]] && continue
+        if [ "$name" = "$server_name" ]; then
+            return 0
+        fi
+    done < "$CONFIG_FILE"
+    
+    return 1
+}
+
+# Function to remove a server from config (exact match, not regex)
+remove_server_from_config() {
+    local server_name=$1
+    local temp_file
+    temp_file=$(mktemp)
+    
+    local name rest
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        # Extract the server name (first field before |)
+        name="${line%%|*}"
+        name=$(strip_cr "$name")
+        
+        # Keep the line if it's not an exact match or if it's a comment/empty
+        if [[ -z "$name" || "$name" =~ ^[[:space:]]*# || "$name" != "$server_name" ]]; then
+            printf '%s\n' "$line"
+        fi
+    done < "$CONFIG_FILE" > "$temp_file"
+    
+    # Use secure write
+    local old_umask
+    old_umask=$(umask)
+    umask 077
+    mv "$temp_file" "$CONFIG_FILE"
+    umask "$old_umask"
+}
+
 # Function to validate input doesn't contain pipe character
 validate_no_pipe() {
     local input="$1"
     local field_name="$2"
     if [[ "$input" == *"|"* ]]; then
-        echo -e "${RED}Error:${NC} ${field_name} cannot contain the pipe character '|'. Please try again."
+        printf '%b\n' "${RED}Error:${NC} ${field_name} cannot contain the pipe character '|'. Please try again."
+        return 1
+    fi
+    return 0
+}
+
+# Function to validate server name
+validate_server_name() {
+    local name="$1"
+    
+    # Check for empty
+    if [ -z "$name" ]; then
+        printf '%b\n' "${RED}Error:${NC} Server name cannot be empty."
+        return 1
+    fi
+    
+    # Check for reserved names
+    for reserved in "${RESERVED_NAMES[@]}"; do
+        if [ "$name" = "$reserved" ]; then
+            printf '%b\n' "${RED}Error:${NC} '$name' is a reserved command name and cannot be used as a server name."
+            return 1
+        fi
+    done
+    
+    # Check for whitespace
+    if [[ "$name" =~ [[:space:]] ]]; then
+        printf '%b\n' "${RED}Error:${NC} Server name cannot contain whitespace."
+        return 1
+    fi
+    
+    # Check for regex special characters that could cause issues
+    # Allow alphanumeric, dash, underscore, and dot
+    if [[ ! "$name" =~ ^[a-zA-Z0-9._-]+$ ]]; then
+        printf '%b\n' "${RED}Error:${NC} Server name can only contain letters, numbers, dots, dashes, and underscores."
+        return 1
+    fi
+    
+    # Check for pipe
+    if ! validate_no_pipe "$name" "Server name"; then
+        return 1
+    fi
+    
+    return 0
+}
+
+# Function to validate port number
+validate_port() {
+    local port="$1"
+    if [[ ! "$port" =~ ^[0-9]+$ ]]; then
+        printf '%b\n' "${RED}Error:${NC} Port must be a number."
+        return 1
+    fi
+    if [ "$port" -lt 1 ] || [ "$port" -gt 65535 ]; then
+        printf '%b\n' "${RED}Error:${NC} Port must be between 1 and 65535."
+        return 1
+    fi
+    return 0
+}
+
+# Function to validate host/user don't start with -
+validate_ssh_arg() {
+    local value="$1"
+    local field_name="$2"
+    if [[ "$value" == -* ]]; then
+        printf '%b\n' "${RED}Error:${NC} ${field_name} cannot start with '-'."
         return 1
     fi
     return 0
@@ -94,71 +264,85 @@ validate_no_pipe() {
 
 # Function to add a new server interactively
 add_server() {
-    echo -e "${BLUE}=== Add New Server ===${NC}"
-    echo ""
+    printf '%b\n' "${BLUE}=== Add New Server ===${NC}"
+    printf '\n'
+    
+    check_config_permissions
+    
+    local server_name host user port key_file password options
+    local existing_entry=""
     
     # Get server name
     while true; do
-        read -p "Server name (alias): " server_name
-        if [ -z "$server_name" ]; then
-            echo -e "${RED}Error:${NC} Server name cannot be empty."
+        IFS= read -r -p "Server name (alias): " server_name
+        if ! validate_server_name "$server_name"; then
             continue
         fi
-        if validate_no_pipe "$server_name" "Server name"; then
-            break
-        fi
+        break
     done
     
-    # Check if server already exists
-    if find_server "$server_name" > /dev/null 2>&1; then
-        echo -e "${RED}Error:${NC} Server '${server_name}' already exists."
-        read -p "Overwrite? (y/N): " overwrite
+    # Check if server already exists and save existing entry
+    if server_exists "$server_name"; then
+        printf '%b\n' "${YELLOW}Warning:${NC} Server '${server_name}' already exists."
+        IFS= read -r -p "Overwrite? (y/N): " overwrite
         if [[ ! "$overwrite" =~ ^[Yy]$ ]]; then
-            echo "Cancelled."
+            printf '%s\n' "Cancelled."
             exit 0
         fi
-        # Remove existing entry
-        grep -v "^${server_name}|" "$CONFIG_FILE" > "${CONFIG_FILE}.tmp" 2>/dev/null || true
-        mv "${CONFIG_FILE}.tmp" "$CONFIG_FILE"
+        # Save the config content without this entry BEFORE prompting for new values
+        # This way if user Ctrl-C's during input, the old entry is preserved
+        existing_entry="will_overwrite"
     fi
     
     # Get host
     while true; do
-        read -p "Hostname or IP: " host
+        IFS= read -r -p "Hostname or IP: " host
         if [ -z "$host" ]; then
-            echo -e "${RED}Error:${NC} Host cannot be empty."
+            printf '%b\n' "${RED}Error:${NC} Host cannot be empty."
             continue
         fi
-        if validate_no_pipe "$host" "Hostname"; then
-            break
+        if ! validate_no_pipe "$host" "Hostname"; then
+            continue
         fi
+        if ! validate_ssh_arg "$host" "Hostname"; then
+            continue
+        fi
+        break
     done
     
     # Get username
     while true; do
-        read -p "Username [$(whoami)]: " user
+        IFS= read -r -p "Username [$(whoami)]: " user
         user="${user:-$(whoami)}"
-        if validate_no_pipe "$user" "Username"; then
-            break
+        if ! validate_no_pipe "$user" "Username"; then
+            continue
         fi
+        if ! validate_ssh_arg "$user" "Username"; then
+            continue
+        fi
+        break
     done
     
     # Get port
     while true; do
-        read -p "Port [22]: " port
+        IFS= read -r -p "Port [22]: " port
         port="${port:-22}"
-        if validate_no_pipe "$port" "Port"; then
-            break
+        if ! validate_no_pipe "$port" "Port"; then
+            continue
         fi
+        if ! validate_port "$port"; then
+            continue
+        fi
+        break
     done
     
     # Get authentication method
-    echo ""
-    echo "Authentication method:"
-    echo "  1) SSH Key"
-    echo "  2) Password"
-    echo "  3) None (use default SSH keys)"
-    read -p "Choose [3]: " auth_choice
+    printf '\n'
+    printf '%s\n' "Authentication method:"
+    printf '%s\n' "  1) SSH Key"
+    printf '%s\n' "  2) Password"
+    printf '%s\n' "  3) None (use default SSH keys)"
+    IFS= read -r -p "Choose [3]: " auth_choice
     auth_choice="${auth_choice:-3}"
     
     key_file=""
@@ -167,25 +351,27 @@ add_server() {
     case $auth_choice in
         1)
             while true; do
-                read -p "SSH key file path [~/.ssh/id_rsa]: " key_file
+                IFS= read -r -p "SSH key file path [~/.ssh/id_rsa]: " key_file
                 key_file="${key_file:-~/.ssh/id_rsa}"
-                if validate_no_pipe "$key_file" "SSH key file path"; then
-                    break
+                if ! validate_no_pipe "$key_file" "SSH key file path"; then
+                    continue
                 fi
+                break
             done
             ;;
         2)
             while true; do
-                read -sp "Password: " password
-                echo ""
-                if validate_no_pipe "$password" "Password"; then
-                    break
+                IFS= read -r -s -p "Password: " password
+                printf '\n'
+                if ! validate_no_pipe "$password" "Password"; then
+                    continue
                 fi
+                break
             done
             if [ -z "$password" ]; then
-                echo -e "${YELLOW}Warning:${NC} Empty password. You'll be prompted during connection."
+                printf '%b\n' "${YELLOW}Warning:${NC} Empty password. You'll be prompted during connection."
             else
-                echo -e "${YELLOW}Warning:${NC} Password will be stored in plain text. Consider using SSH keys for better security."
+                printf '%b\n' "${YELLOW}Warning:${NC} Password will be stored in plain text. Consider using SSH keys for better security."
             fi
             ;;
         3)
@@ -193,113 +379,126 @@ add_server() {
             password=""
             ;;
         *)
-            echo -e "${YELLOW}Invalid choice. Using default SSH keys.${NC}"
+            printf '%b\n' "${YELLOW}Invalid choice. Using default SSH keys.${NC}"
             ;;
     esac
     
     # Get additional options
-    echo ""
+    printf '\n'
     while true; do
-        read -p "Additional SSH options (optional, e.g., -o ServerAliveInterval=60): " options
+        IFS= read -r -p "Additional SSH options (optional, e.g., -o ServerAliveInterval=60): " options
         options="${options:-}"
-        if validate_no_pipe "$options" "SSH options"; then
-            break
+        if ! validate_no_pipe "$options" "SSH options"; then
+            continue
         fi
+        break
     done
     
-    # Write to config file
-    echo "${server_name}|${host}|${user}|${port}|${key_file}|${password}|${options}" >> "$CONFIG_FILE"
+    # Now that all prompts succeeded, remove the old entry if overwriting
+    if [ -n "$existing_entry" ]; then
+        remove_server_from_config "$server_name"
+    fi
     
-    echo ""
-    echo -e "${GREEN}✓${NC} Server '${server_name}' added successfully!"
-    echo ""
-    echo "Connect using: ${CYAN}go2 ${server_name}${NC}"
+    # Write to config file securely
+    local entry="${server_name}|${host}|${user}|${port}|${key_file}|${password}|${options}"
+    append_config_secure "$entry"
+    
+    printf '\n'
+    printf '%b\n' "${GREEN}✓${NC} Server '${server_name}' added successfully!"
+    printf '\n'
+    printf '%b\n' "Connect using: ${CYAN}go2 ${server_name}${NC}"
 }
 
 # Function to check if expect is available
 check_expect() {
-    if command -v expect > /dev/null 2>&1; then
-        return 0
-    else
-        return 1
-    fi
+    command -v expect > /dev/null 2>&1
 }
 
 # Function to create and execute expect script for password authentication
 ssh_with_password() {
-    local ssh_args=("${@:1:$#-1}")  # All arguments except the last
-    local password="${!#}"           # Last argument is the password
-    local expect_script=$(mktemp)
-    local ssh_args_file=$(mktemp)
+    local password="$1"
+    shift
+    local ssh_args=("$@")
     
-    # Set up trap to ensure temp files are cleaned up even on interrupt
-    trap 'rm -f "$expect_script" "$ssh_args_file"' EXIT INT TERM
+    local expect_script
+    expect_script=$(mktemp)
     
-    # Escape the password for expect
-    local escaped_password=$(echo "$password" | sed 's/[[\$*+?.^|(){}]/\\&/g')
+    # Set up trap to ensure temp file is cleaned up even on interrupt
+    trap 'rm -f "$expect_script"' EXIT INT TERM
     
-    # Build the SSH command arguments list for expect
-    # We'll write each argument on a separate line and read them into a Tcl list
-    printf '%s\n' "${ssh_args[@]}" > "$ssh_args_file"
+    # Pass password via environment variable instead of embedding in script
+    export GO2_SSH_PASSWORD="$password"
     
-    # Escape the file path for use in expect script
-    local escaped_args_file=$(echo "$ssh_args_file" | sed 's/[[\$*+?.^|(){}]/\\&/g')
-    
-    cat > "$expect_script" << EOF
+    # Use quoted heredoc to prevent variable/command substitution in the script
+    # This prevents Tcl injection from the password
+    cat > "$expect_script" << 'EXPECT_SCRIPT_END'
 #!/usr/bin/expect -f
-set timeout 30
-set password "$escaped_password"
+set timeout -1
 
-# Read SSH arguments from file and build command
-set ssh_args {}
-set f [open "$escaped_args_file" r]
-while {[gets \$f line] >= 0} {
-    lappend ssh_args \$line
-}
-close \$f
-file delete "$escaped_args_file"
+# Get password from environment variable (secure)
+set password $env(GO2_SSH_PASSWORD)
 
-spawn {*}\$ssh_args
+# Get SSH args from command line
+set ssh_args [lrange $argv 0 end]
+
+spawn -noecho {*}$ssh_args
 
 expect {
-    -re "(?i)(password|Password):" {
-        send "\$password\r"
+    -nocase "password:" {
+        send -- "$password\r"
         exp_continue
     }
+    -nocase "password for" {
+        send -- "$password\r"
+        exp_continue
+    }
+    "Permission denied" {
+        puts stderr "Authentication failed"
+        exit 1
+    }
     "(yes/no)" {
-        send "yes\r"
+        puts stderr "\nHost key verification required. Please verify the fingerprint and type 'yes' or 'no'."
+        expect_user -re "(.*)\n"
+        send -- "$expect_out(1,string)\r"
+        exp_continue
+    }
+    "(yes/no/\[fingerprint\])" {
+        puts stderr "\nHost key verification required. Please verify the fingerprint."
+        expect_user -re "(.*)\n"
+        send -- "$expect_out(1,string)\r"
         exp_continue
     }
     "Are you sure you want to continue connecting" {
-        send "yes\r"
+        puts stderr "\nHost key verification required. Please respond."
+        expect_user -re "(.*)\n"
+        send -- "$expect_out(1,string)\r"
         exp_continue
     }
-    timeout {
-        puts "Connection timed out"
-        exit 1
-    }
     eof {
-        exit
+        catch wait result
+        exit [lindex $result 3]
     }
 }
 
-# Pass control to the user after successful login
 interact
-EOF
+EXPECT_SCRIPT_END
     
     chmod +x "$expect_script"
-    expect -f "$expect_script"
+    expect -f "$expect_script" "${ssh_args[@]}"
     local exit_code=$?
     
-    # Clean up trap and temp files
+    # Clean up trap and temp file
     trap - EXIT INT TERM
-    rm -f "$expect_script" "$ssh_args_file"
+    rm -f "$expect_script"
+    unset GO2_SSH_PASSWORD
+    
     return $exit_code
 }
 
 # Main execution
 if [ $# -eq 0 ]; then
     usage
+    exit 1
 fi
 
 COMMAND=$1
@@ -323,10 +522,12 @@ esac
 # Otherwise, treat as server name
 SERVER_NAME=$COMMAND
 
+check_config_permissions
+
 # Find server configuration
 if ! find_server "$SERVER_NAME"; then
-    echo -e "${RED}Error:${NC} Server '${SERVER_NAME}' not found in configuration."
-    echo ""
+    printf '%b\n' "${RED}Error:${NC} Server '${SERVER_NAME}' not found in configuration."
+    printf '\n'
     list_servers
     exit 1
 fi
@@ -340,9 +541,9 @@ if [ -n "$SERVER_PASSWORD" ]; then
     if check_expect; then
         USE_PASSWORD_AUTH=true
     else
-        echo -e "${YELLOW}Warning:${NC} Password specified but 'expect' not found."
-        echo -e "${YELLOW}Falling back to interactive password prompt...${NC}"
-        echo ""
+        printf '%b\n' "${YELLOW}Warning:${NC} Password specified but 'expect' not found."
+        printf '%b\n' "${YELLOW}Falling back to interactive password prompt...${NC}"
+        printf '\n'
     fi
 fi
 
@@ -358,38 +559,36 @@ if [ -n "$SERVER_KEY" ] && [ -z "$SERVER_PASSWORD" ]; then
     if [ -f "$SERVER_KEY" ]; then
         SSH_ARGS+=("-i" "$SERVER_KEY")
     else
-        echo -e "${YELLOW}Warning:${NC} Key file '$SERVER_KEY' not found. Continuing without it."
+        printf '%b\n' "${YELLOW}Warning:${NC} Key file '$SERVER_KEY' not found. Continuing without it."
     fi
 fi
 
 # Add additional options if specified
-# Parse SERVER_OPTIONS - it may contain multiple space-separated options
-# Since we've validated no pipes exist, we can safely split by spaces
 if [ -n "$SERVER_OPTIONS" ]; then
     # Split SERVER_OPTIONS by spaces into array elements
-    # This is safe because we've validated the input doesn't contain pipes
-    IFS=' ' read -ra OPTIONS_ARRAY <<< "$SERVER_OPTIONS"
+    IFS=' ' read -r -a OPTIONS_ARRAY <<< "$SERVER_OPTIONS"
     SSH_ARGS+=("${OPTIONS_ARRAY[@]}")
 fi
 
-# Add user and host
-SSH_ARGS+=("${SERVER_USER}@${SERVER_HOST}")
+# Add -- to prevent user@host from being interpreted as an option
+SSH_ARGS+=("--" "${SERVER_USER}@${SERVER_HOST}")
 
 # Display connection info
 auth_info=""
 if [ -n "$SERVER_PASSWORD" ]; then
     auth_info=" (password auth)"
-elif [ -n "$SERVER_KEY" ]; then
+elif [ -n "$SERVER_KEY" ] && [ -f "${SERVER_KEY/#\~/$HOME}" ]; then
     auth_info=" (key: ${SERVER_KEY})"
 fi
 
-echo -e "${BLUE}Connecting to:${NC} ${GREEN}${SERVER_NAME}${NC} (${SERVER_USER}@${SERVER_HOST}:${SERVER_PORT})${auth_info}"
-echo ""
+printf '%b\n' "${BLUE}Connecting to:${NC} ${GREEN}${SERVER_NAME}${NC} (${SERVER_USER}@${SERVER_HOST}:${SERVER_PORT})${auth_info}"
+printf '\n'
 
 # Execute SSH connection
 if [ "$USE_PASSWORD_AUTH" = true ]; then
-    ssh_with_password "${SSH_ARGS[@]}" "$SERVER_PASSWORD"
+    ssh_with_password "$SERVER_PASSWORD" "${SSH_ARGS[@]}"
+    exit $?
 else
     "${SSH_ARGS[@]}"
+    exit $?
 fi
-

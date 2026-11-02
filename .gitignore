@@ -7,7 +7,3 @@ servers.conf
 
 # macOS
 .DS_Store
-
-# Temporary expect scripts (if any leak through)
-/tmp/go2_expect_*
-

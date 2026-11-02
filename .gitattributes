@@ -1,2 +1,8 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Shell scripts must use LF line endings (for WSL/Cygwin compatibility)
+*.sh text eol=lf
+
+# Configuration files should also use LF
+servers.conf.example text eol=lf
