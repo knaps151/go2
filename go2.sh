@@ -440,31 +440,13 @@ set password $env(GO2_SSH_PASSWORD)
 # Get SSH args from command line
 set ssh_args [lrange $argv 0 end]
 
+# Spawn SSH
 spawn -noecho {*}$ssh_args
 
-# Track if we've sent password to avoid infinite loops
-set password_sent 0
-
-# Initial timeout for connection
 set timeout 30
 
+# Wait for password prompt or host key verification
 expect {
-    -nocase -re "password.*:" {
-        if {$password_sent} {
-            # Already sent password once, this means auth failed
-            puts stderr "Authentication failed - incorrect password"
-            exit 1
-        }
-        send -- "$password\r"
-        set password_sent 1
-        # Short timeout after password - if we get another prompt, auth failed
-        set timeout 5
-        exp_continue
-    }
-    "Permission denied" {
-        puts stderr "Authentication failed"
-        exit 1
-    }
     "(yes/no)" {
         puts stderr "\nHost key verification required. Please verify the fingerprint and type 'yes' or 'no'."
         expect_user -re "(.*)\n"
@@ -483,9 +465,44 @@ expect {
         send -- "$expect_out(1,string)\r"
         exp_continue
     }
+    -nocase -re "password.*:" {
+        send -- "$password\r"
+    }
+    "Permission denied" {
+        puts stderr "Authentication failed"
+        exit 1
+    }
     timeout {
-        # Timeout after password sent means we're likely at shell prompt
-        # Fall through to interact
+        puts stderr "Connection timed out"
+        exit 1
+    }
+    eof {
+        puts stderr "Connection closed"
+        exit 1
+    }
+}
+
+# After sending password, check for auth failure or success
+set timeout 10
+expect {
+    -nocase -re "password.*:" {
+        # Prompted for password again = wrong password
+        puts stderr "Authentication failed - incorrect password"
+        exit 1
+    }
+    "Permission denied" {
+        puts stderr "Authentication failed"
+        exit 1
+    }
+    -re "(\\\$|#|>|\\]) ?$" {
+        # Common shell prompt patterns - we're logged in
+    }
+    -re "\n" {
+        # Got some output (MOTD, etc), keep consuming until we see a prompt
+        exp_continue
+    }
+    timeout {
+        # Timeout usually means we're at a prompt that didn't match
     }
     eof {
         catch wait result
@@ -493,6 +510,7 @@ expect {
     }
 }
 
+# Hand control to user - this is the key part for interactive use
 interact
 EXPECT_SCRIPT_END
     
