@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>go2 — SSH Connection Manager</title>
+  <meta name="description" content="Connect to your servers with simple aliases. Type go2 server-name and you're in." />
+  <meta property="og:title" content="go2 — SSH Connection Manager" />
+  <meta property="og:description" content="Connect to your servers with simple aliases. Type go2 server-name and you're in." />
+  <meta property="og:type" content="website" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="atmosphere" aria-hidden="true">
+    <div class="atmosphere__wash"></div>
+    <div class="atmosphere__grid"></div>
+    <div class="atmosphere__beam"></div>
+  </div>
+
+  <header class="top">
+    <a class="top__brand" href="#top">go2</a>
+    <nav class="top__nav">
+      <a href="#install">Install</a>
+      <a href="https://github.com/knaps151/go2" rel="noopener">GitHub</a>
+    </nav>
+  </header>
+
+  <main id="top">
+    <section class="hero">
+      <div class="hero__copy">
+        <p class="hero__brand reveal" style="--d:0s">go2</p>
+        <h1 class="hero__headline reveal" style="--d:0.08s">Your servers.<br />One word.</h1>
+        <p class="hero__lede reveal" style="--d:0.16s">
+          Connect with memorable aliases. No more memorizing hosts, ports, or key paths.
+        </p>
+        <div class="hero__actions reveal" style="--d:0.24s">
+          <a class="btn btn--primary" href="#install">Get started</a>
+          <a class="btn btn--ghost" href="https://github.com/knaps151/go2" rel="noopener">View on GitHub</a>
+        </div>
+      </div>
+
+      <div class="hero__stage reveal" style="--d:0.18s" aria-hidden="true">
+        <div class="terminal">
+          <div class="terminal__chrome">
+            <span></span><span></span><span></span>
+            <em>jonoclark — go2</em>
+          </div>
+          <pre class="terminal__body"><code><span class="t-muted">$</span> <span id="typed"></span><span class="cursor" aria-hidden="true"></span>
+<span class="t-out t-line" data-line="1">Connecting to: <span class="t-ok">pi</span> (pi@10.0.0.1:22)</span>
+<span class="t-out t-line" data-line="2"> </span>
+<span class="t-out t-line" data-line="3">Linux PiServer 6.1.54-v8+ aarch64</span>
+<span class="t-out t-line" data-line="4"> </span>
+<span class="t-out t-line" data-line="5"><span class="t-prompt">pi@PiServer:~ $</span> <span class="cursor cursor--late" aria-hidden="true"></span></span></code></pre>
+        </div>
+      </div>
+    </section>
+
+    <section class="section section--use" id="use">
+      <p class="section__eyebrow">How it works</p>
+      <h2 class="section__title">Three commands. That&rsquo;s the whole product.</h2>
+      <ol class="steps">
+        <li>
+          <span class="steps__cmd">go2 add</span>
+          <span class="steps__desc">Save a host once — alias, user, port, key or password.</span>
+        </li>
+        <li>
+          <span class="steps__cmd">go2 list</span>
+          <span class="steps__desc">See every server at a glance when you forget the names.</span>
+        </li>
+        <li>
+          <span class="steps__cmd">go2 pi</span>
+          <span class="steps__desc">Land in a real SSH session. Arrow keys, resize, the lot.</span>
+        </li>
+      </ol>
+    </section>
+
+    <section class="section section--install" id="install">
+      <p class="section__eyebrow">Install</p>
+      <h2 class="section__title">Clone, run the installer, reload your shell.</h2>
+      <p class="section__lede">Works on macOS, Linux, and Windows (WSL). Needs Bash and OpenSSH 8.4+.</p>
+      <div class="install">
+        <pre class="install__code"><code>git clone https://github.com/knaps151/go2.git
+cd go2
+./install.sh
+source ~/.zshrc</code></pre>
+        <button type="button" class="install__copy" id="copy-install" data-copied="Copied">Copy</button>
+      </div>
+      <p class="install__next">Then run <code>go2 add</code> and connect with <code>go2 &lt;name&gt;</code>.</p>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <p><strong>go2</strong> is MIT licensed. Built for people who SSH a lot.</p>
+    <p>
+      <a href="https://github.com/knaps151/go2">GitHub</a>
+      ·
+      <a href="https://github.com/knaps151/go2/releases/tag/0.1.0">v0.1.0</a>
+    </p>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>
