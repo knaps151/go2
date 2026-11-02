@@ -433,7 +433,6 @@ ssh_with_password() {
     # This prevents Tcl injection from the password
     cat > "$expect_script" << 'EXPECT_SCRIPT_END'
 #!/usr/bin/expect -f
-set timeout -1
 
 # Get password from environment variable (secure)
 set password $env(GO2_SSH_PASSWORD)
@@ -443,13 +442,23 @@ set ssh_args [lrange $argv 0 end]
 
 spawn -noecho {*}$ssh_args
 
+# Track if we've sent password to avoid infinite loops
+set password_sent 0
+
+# Initial timeout for connection
+set timeout 30
+
 expect {
-    -nocase "password:" {
+    -nocase -re "password.*:" {
+        if {$password_sent} {
+            # Already sent password once, this means auth failed
+            puts stderr "Authentication failed - incorrect password"
+            exit 1
+        }
         send -- "$password\r"
-        exp_continue
-    }
-    -nocase "password for" {
-        send -- "$password\r"
+        set password_sent 1
+        # Short timeout after password - if we get another prompt, auth failed
+        set timeout 5
         exp_continue
     }
     "Permission denied" {
@@ -473,6 +482,10 @@ expect {
         expect_user -re "(.*)\n"
         send -- "$expect_out(1,string)\r"
         exp_continue
+    }
+    timeout {
+        # Timeout after password sent means we're likely at shell prompt
+        # Fall through to interact
     }
     eof {
         catch wait result
